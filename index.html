@@ -33,37 +33,61 @@
         // The API will call this function when the video player is ready.
         function onPlayerReady(event) {
             console.log('player ready');
-            event.target.playVideo();
+            // event.target.playVideo();
         }
 
         // The API calls this function when the player's state changes.
         function onPlayerStateChange(event) {
             switch (event.data) {
                 case YT.PlayerState.PAUSED:
-                    console.log('pause');
-                    connection.send('pause');
+                    var data = generateJSONData('video_status', 'pause');
+                    console.log(data);
+                    connection.send(data);
                     break;
                 case YT.PlayerState.PLAYING:
-                    console.log('play');
-                    connection.send('play');
+                    var data = generateJSONData('video_status', 'play');
+                    console.log(data);
+                    connection.send(data);
                     break;
                 default:
-                    console.log('other event detected : '+event.data);
+                    console.log('other event detected : ' + event.data);
             }
+        }
+
+        function generateJSONData(type, data) {
+            return '{"type": "' + type + '","data": "' + data + '"}'
         }
 
         // Establish connection to server
         var connection = new WebSocket('ws://127.0.0.1:12345');
+
+        /*
+        Expected format of message:
+         {
+             'type': (video_status|seek_time),
+             'data': (play|pause|<time>)
+         }
+        */
         connection.onmessage = function (event) {
-            switch (event.data) {
-                case 'pause':
-                    player.pauseVideo();
+            var message = JSON.parse(event.data)
+            switch (message.type) {
+                case 'video_status':
+                    var currentVideoStatus = message.data
+                    switch (currentVideoStatus) {
+                        case 'play':
+                            player.playVideo();
+                            break;
+                        case 'pause':
+                            player.pauseVideo();
+                            break;
+                        default:
+                            console.log('Unknown video status - '+currentVideoStatus)
+                    }
                     break;
-                case 'play':
-                    player.playVideo();
-                    break;
+                case 'seek_time':
+                    console.log('seek time not yet implemented')
                 default:
-                    console.log('received unknown message - '+event.data);
+                    console.log('Unknown message type - ' + message.type);
             }
         }
 
