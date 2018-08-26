@@ -1,10 +1,15 @@
 import asyncio
 import websockets
+import copy
 
 USERS = set()
 
-async def notify_all_users(message):
-    await asyncio.wait([user.send(message) for user in USERS])
+async def notify_all_users_except_sender(message, sender):
+    RECEIVERS = copy.copy(USERS)
+    RECEIVERS.remove(sender)
+    if RECEIVERS:
+        await asyncio.wait([user.send(message) for user in RECEIVERS])
+    del RECEIVERS
 
 async def close_connection(user):
     USERS.remove(user)
@@ -16,8 +21,11 @@ async def on_connection(websocket, path):
     try:
         async for message in websocket:
             print(f"< {message}")
-            await notify_all_users(message)
+            await notify_all_users_except_sender(message, websocket)
 
+    except:
+        print('Woah, something closed')
+        
     finally:
         await close_connection(websocket)
 

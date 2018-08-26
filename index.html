@@ -8,6 +8,9 @@
     <div id="player"></div>
     <script>
 
+        // Variable to detect if play/pause was caused by user or message from server
+        var justReceivedPlayOrPauseMessage = false;
+
         // This code loads the IFrame Player API code asynchronously.
         var tag = document.createElement('script');
 
@@ -38,19 +41,28 @@
 
         // The API calls this function when the player's state changes.
         function onPlayerStateChange(event) {
+
+            // Don't send a message to server the change in player state wasn't
+            // caused by the user itself, as this would be a duplicate message.
+            if (justReceivedPlayOrPauseMessage) {
+                justReceivedPlayOrPauseMessage = false;
+                console.log('Player state changed but it wasn\'t due to user');
+                return;
+            }
+
             switch (event.data) {
                 case YT.PlayerState.PAUSED:
                     var data = generateJSONData('video_status', 'pause');
-                    console.log(data);
+                    console.log('Sending message - ' + data);
                     connection.send(data);
                     break;
                 case YT.PlayerState.PLAYING:
                     var data = generateJSONData('video_status', 'play');
-                    console.log(data);
+                    console.log('Sending message - ' + data);
                     connection.send(data);
                     break;
                 default:
-                    console.log('other event detected : ' + event.data);
+                    console.log('Other event detected : ' + event.data);
             }
         }
 
@@ -69,23 +81,31 @@
          }
         */
         connection.onmessage = function (event) {
-            var message = JSON.parse(event.data)
+            var message = JSON.parse(event.data);
+            console.log('Received message - ' + JSON.stringify(message));
             switch (message.type) {
                 case 'video_status':
                     var currentVideoStatus = message.data
                     switch (currentVideoStatus) {
                         case 'play':
-                            player.playVideo();
+                            if (player.getPlayerState() != YT.PlayerState.PLAYING) {
+                                justReceivedPlayOrPauseMessage = true
+                                player.playVideo();
+                            }
                             break;
                         case 'pause':
-                            player.pauseVideo();
+                            if (player.getPlayerState() != YT.PlayerState.PAUSED) {
+                                justReceivedPlayOrPauseMessage = true
+                                player.pauseVideo();
+                            }
                             break;
                         default:
-                            console.log('Unknown video status - '+currentVideoStatus)
+                            console.log('Unknown video status - ' + currentVideoStatus)
                     }
                     break;
                 case 'seek_time':
-                    console.log('seek time not yet implemented')
+                    player.seekTo(message.data)
+                    break;
                 default:
                     console.log('Unknown message type - ' + message.type);
             }
