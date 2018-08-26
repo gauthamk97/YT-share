@@ -15,6 +15,7 @@
         var justReceivedSeekMessage = false
 
         // Variable to detect if play/pause was caused by user or message from server
+        // Thus preventing duplicate play/pause messages from being sent
         var justReceivedPlayOrPauseMessage = false;
 
         // This code loads the IFrame Player API code asynchronously.
@@ -48,44 +49,53 @@
         // The API calls this function when the player's state changes.
         function onPlayerStateChange(event) {
 
-            // Don't send a message to server the change in player state wasn't
-            // caused by the user itself, as this would be a duplicate message.
-            if (justReceivedPlayOrPauseMessage) {
-                justReceivedPlayOrPauseMessage = false;
-                console.log('Player state changed but it wasn\'t due to user');
-                return;
-            }
-
             switch (event.data) {
                 case YT.PlayerState.PAUSED:
                     videoTimeAtPause = player.getCurrentTime();
 
-                    var data = generateJSONData('video_status', 'pause');
-                    sendData(data);
+                    // Don't send a message to server the change in player state wasn't
+                    // caused by the user itself, as this would be a duplicate message.
+                    if (!justReceivedPlayOrPauseMessage) {
+                        generateAndSendData('video_status', 'pause');
+                    } else {
+                        justReceivedPlayOrPauseMessage = false;
+                        return;
+                    }
                     break;
-                case YT.PlayerState.PLAYING:
 
+                case YT.PlayerState.PLAYING:
                     // Detecting seek (500 ms error allowed)
                     var currentVideoTime = player.getCurrentTime();
                     if (Math.abs(currentVideoTime - videoTimeAtPause) > 0.5) {
                         // Player was paused, then user seeked to different time and hit play
                         videoTimeAtPause = currentVideoTime;
-                        if (!justReceivedSeekMessage) {
-                            var data = generateJSONData('seek_time', currentVideoTime);
-                            sendData(data);
+                        if (!justReceivedSeekMessage && !justReceivedPlayOrPauseMessage) {
+                            generateAndSendData('seek_time', currentVideoTime);
                         }
                     }
-                    if (!justReceivedSeekMessage) {
-                        var data = generateJSONData('video_status', 'play');
-                        sendData(data);
+                    if (!justReceivedSeekMessage && !justReceivedPlayOrPauseMessage) {
+                        generateAndSendData('video_status', 'play');
                     } else {
                         justReceivedSeekMessage = false
+                        justReceivedPlayOrPauseMessage = false
                     }
-
                     break;
+
+                case YT.PlayerState.BUFFERING:
+                    if (!justReceivedSeekMessage && !justReceivedPlayOrPauseMessage) {
+                        var currentVideoTime = player.getCurrentTime();
+                        generateAndSendData('seek_time', currentVideoTime);
+                    }
+                    break;
+
                 default:
                     console.log('Other event detected : ' + event.data);
             }
+        }
+
+        function generateAndSendData(type, data) {
+            var dataToSend = generateJSONData(type, data);
+            sendData(dataToSend);
         }
 
         function generateJSONData(type, data) {
