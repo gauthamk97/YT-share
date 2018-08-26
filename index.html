@@ -8,6 +8,12 @@
     <div id="player"></div>
     <script>
 
+        // To detect if seek occurred
+        var videoTimeAtPause = 0
+
+        // Variable to prevent duplicate seek messages from being sent
+        var justReceivedSeekMessage = false
+
         // Variable to detect if play/pause was caused by user or message from server
         var justReceivedPlayOrPauseMessage = false;
 
@@ -52,14 +58,30 @@
 
             switch (event.data) {
                 case YT.PlayerState.PAUSED:
+                    videoTimeAtPause = player.getCurrentTime();
+
                     var data = generateJSONData('video_status', 'pause');
-                    console.log('Sending message - ' + data);
-                    connection.send(data);
+                    sendData(data);
                     break;
                 case YT.PlayerState.PLAYING:
-                    var data = generateJSONData('video_status', 'play');
-                    console.log('Sending message - ' + data);
-                    connection.send(data);
+
+                    // Detecting seek (500 ms error allowed)
+                    var currentVideoTime = player.getCurrentTime();
+                    if (Math.abs(currentVideoTime - videoTimeAtPause) > 0.5) {
+                        // Player was paused, then user seeked to different time and hit play
+                        videoTimeAtPause = currentVideoTime;
+                        if (!justReceivedSeekMessage) {
+                            var data = generateJSONData('seek_time', currentVideoTime);
+                            sendData(data);
+                        }
+                    }
+                    if (!justReceivedSeekMessage) {
+                        var data = generateJSONData('video_status', 'play');
+                        sendData(data);
+                    } else {
+                        justReceivedSeekMessage = false
+                    }
+
                     break;
                 default:
                     console.log('Other event detected : ' + event.data);
@@ -68,6 +90,11 @@
 
         function generateJSONData(type, data) {
             return '{"type": "' + type + '","data": "' + data + '"}'
+        }
+
+        function sendData(data) {
+            console.log('Sending message - ' + data);
+            connection.send(data);
         }
 
         // Establish connection to server
@@ -104,7 +131,8 @@
                     }
                     break;
                 case 'seek_time':
-                    player.seekTo(message.data)
+                    justReceivedSeekMessage = true;
+                    player.seekTo(message.data);
                     break;
                 default:
                     console.log('Unknown message type - ' + message.type);
